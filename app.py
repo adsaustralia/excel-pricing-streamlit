@@ -9,10 +9,10 @@ from openpyxl.utils import column_index_from_string, get_column_letter
 st.set_page_config(page_title="Excel SQM & Pricing Tool", layout="wide")
 st.title("📊 Excel SQM & Pricing Calculator — Multi-Sheet Version")
 
-st.write("""
+st.write('''
 Upload your Excel file, define column/row settings, and input pricing rules.  
 The app will calculate **SQM and prices** for each sheet, display previews, and let you **download results or a combined summary**.
-""")
+''')
 
 # -----------------------------
 # Helper Functions
@@ -53,13 +53,26 @@ def parse_qty(raw):
     m = re.search(r'\d+(?:\.\d+)?', str(raw).replace(",", ""))
     return float(m.group(0)) if m else None
 
+def clean_value(v):
+    '''
+    Clean raw cell value:
+    - If it's a formula string like ='PRINT DB'!$G13 or =SUM(A1:A5), ignore it.
+    - Otherwise return as-is.
+    '''
+    if v is None:
+        return None
+    if isinstance(v, str) and v.strip().startswith("="):
+        return None
+    return v
+
 # -----------------------------
 # File Upload
 # -----------------------------
 uploaded_file = st.file_uploader("📤 Upload Excel file", type=["xlsx"])
 
 if uploaded_file:
-    wb = openpyxl.load_workbook(uploaded_file)
+    # data_only=True -> use cached formula results instead of formula text
+    wb = openpyxl.load_workbook(uploaded_file, data_only=True)
     sheet_names = wb.sheetnames
 
     # -----------------------------
@@ -128,9 +141,15 @@ if uploaded_file:
 
             for c in range(start_idx, end_idx + 1):
                 col = get_column_letter(c)
-                size_val = ws[f"{col}{row_size}"].value
-                material_val = ws[f"{col}{row_material}"].value
-                qty_val = ws[f"{col}{row_qty}"].value
+
+                # Read and clean raw values from Excel
+                raw_size = ws[f"{col}{row_size}"].value
+                raw_material = ws[f"{col}{row_material}"].value
+                raw_qty = ws[f"{col}{row_qty}"].value
+
+                size_val = clean_value(raw_size)
+                material_val = clean_value(raw_material)
+                qty_val = clean_value(raw_qty)
 
                 w, h = parse_size(size_val)
                 qty = parse_qty(qty_val)
@@ -155,6 +174,7 @@ if uploaded_file:
                     "Price (AUD)": price
                 })
 
+            # Write sheet total & labels
             ws[f"{end_col}{row_sqm}"] = "TOTAL"
             ws[f"{end_col}{row_price}"] = round(total_price, 2)
             ws["AB" + str(row_sqm)] = "SQM"
